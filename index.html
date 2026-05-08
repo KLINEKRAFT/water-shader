@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OCEAN // KLINEKRAFT</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #d6e4ec;
+    --mono: 'IBM Plex Mono', 'Space Mono', ui-monospace, monospace;
+    --hel: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    overflow: hidden;
+    cursor: grab;
+  }
+  body.dragging { cursor: grabbing; }
+  body.draggingShape { cursor: move; }
+  #canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud {
+    position: fixed; pointer-events: none;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(214, 228, 236, 0.55);
+    user-select: none; z-index: 10;
+  }
+  .hud-bl { bottom: 22px; left: 28px; display: flex; gap: 18px; align-items: flex-end; }
+  .hud-br { bottom: 22px; right: 28px; text-align: right; }
+  .hud-br .stat { display: block; }
+  .hud-br .stat span { color: rgba(214, 228, 236, 0.85); }
+  .hud-bl .legend { border: 1px solid rgba(214, 228, 236, 0.18); padding: 7px 11px; line-height: 1.7; }
+  .hud-bl .legend b { color: rgba(214, 228, 236, 0.85); font-weight: normal; margin-right: 6px; }
+
+  /* KLINEKRAFT brand mark, top-right */
+  .brand {
+    position: fixed;
+    top: 22px; right: 28px;
+    z-index: 10;
+    pointer-events: none;
+    text-align: right;
+  }
+  .brand-mark {
+    font-family: var(--hel);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.32em;
+    color: rgba(214, 228, 236, 0.95);
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .brand-tag {
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: rgba(214, 228, 236, 0.4);
+    text-transform: uppercase;
+  }
+
+  /* Panel */
+  .panel {
+    position: fixed;
+    top: 80px;
+    right: 28px;
+    width: 260px;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(214, 228, 236, 0.18);
+    padding: 14px 14px 12px 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(214, 228, 236, 0.7);
+    z-index: 20;
+    user-select: none;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+    max-height: calc(100vh - 130px);
+    overflow-y: auto;
+  }
+  .panel::-webkit-scrollbar { width: 4px; }
+  .panel::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb { background: rgba(214, 228, 236, 0.15); }
+  .panel.hidden { transform: translateX(calc(100% + 30px)); opacity: 0; }
+
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid rgba(214, 228, 236, 0.15);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+  .panel-title { font-size: 11px; color: rgba(214, 228, 236, 0.85); }
+  .panel-toggle, .panel-randomize {
+    cursor: pointer; pointer-events: auto;
+    background: none; border: 1px solid rgba(214, 228, 236, 0.25);
+    color: rgba(214, 228, 236, 0.7);
+    font-family: inherit; font-size: 9px;
+    padding: 2px 6px;
+    text-transform: uppercase; letter-spacing: 0.15em;
+  }
+  .panel-toggle:hover, .panel-randomize:hover {
+    color: rgba(214, 228, 236, 1);
+    border-color: rgba(214, 228, 236, 0.5);
+  }
+  .panel-actions { display: flex; gap: 6px; }
+
+  .show-button {
+    position: fixed; top: 80px; right: 28px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(214, 228, 236, 0.18);
+    color: rgba(214, 228, 236, 0.7);
+    font-family: var(--mono); font-size: 10px;
+    padding: 6px 10px;
+    text-transform: uppercase; letter-spacing: 0.15em;
+    cursor: pointer; z-index: 20;
+    display: none;
+  }
+  .show-button.visible { display: block; }
+
+  .section-label {
+    font-size: 9px; color: rgba(214, 228, 236, 0.45);
+    margin: 14px 0 7px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid rgba(214, 228, 236, 0.08);
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  .row {
+    display: flex; flex-direction: column; gap: 4px;
+    margin-bottom: 9px;
+    pointer-events: auto;
+  }
+  .row:last-child { margin-bottom: 0; }
+  .row-label {
+    display: flex; justify-content: space-between;
+    font-size: 9px;
+  }
+  .row-label span:last-child { color: rgba(214, 228, 236, 0.95); }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    background: transparent; width: 100%; height: 14px; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track { background: rgba(214, 228, 236, 0.15); height: 1px; border: none; }
+  input[type="range"]::-moz-range-track { background: rgba(214, 228, 236, 0.15); height: 1px; border: none; }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    margin-top: -5px; width: 10px; height: 10px;
+    background: rgba(214, 228, 236, 0.85); border: none; border-radius: 0; cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 10px;
+    background: rgba(214, 228, 236, 0.85); border: none; border-radius: 0; cursor: pointer;
+  }
+  input[type="color"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 18px;
+    background: transparent;
+    border: 1px solid rgba(214, 228, 236, 0.25);
+    cursor: pointer; padding: 0;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+  input[type="color"]::-webkit-color-swatch { border: none; }
+  input[type="text"] {
+    width: 100%;
+    background: rgba(214, 228, 236, 0.05);
+    color: rgba(214, 228, 236, 0.95);
+    border: 1px solid rgba(214, 228, 236, 0.2);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 5px 7px;
+    pointer-events: auto;
+  }
+  input[type="text"]:focus { outline: none; border-color: rgba(214, 228, 236, 0.55); }
+  select {
+    width: 100%;
+    background: rgba(214, 228, 236, 0.05);
+    color: rgba(214, 228, 236, 0.9);
+    border: 1px solid rgba(214, 228, 236, 0.2);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 6px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .toggle-group {
+    display: flex; gap: 0;
+    border: 1px solid rgba(214, 228, 236, 0.2);
+    pointer-events: auto;
+  }
+  .toggle-group button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(214, 228, 236, 0.15);
+    color: rgba(214, 228, 236, 0.55);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 5px 0;
+    cursor: pointer;
+  }
+  .toggle-group button:last-child { border-right: none; }
+  .toggle-group button.active {
+    background: rgba(214, 228, 236, 0.12);
+    color: rgba(214, 228, 236, 1);
+  }
+  .toggle-group button:hover:not(.active) { color: rgba(214, 228, 236, 0.85); }
+
+  .footer-logo {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    height: 22px; opacity: 0.5; z-index: 10; pointer-events: none;
+  }
+  .frame { position: fixed; pointer-events: none; z-index: 5; }
+  .frame.tl { top: 14px; left: 14px; width: 22px; height: 22px; border-top: 1px solid rgba(214,228,236,0.3); border-left: 1px solid rgba(214,228,236,0.3); }
+  .frame.tr { top: 14px; right: 14px; width: 22px; height: 22px; border-top: 1px solid rgba(214,228,236,0.3); border-right: 1px solid rgba(214,228,236,0.3); }
+  .frame.bl { bottom: 14px; left: 14px; width: 22px; height: 22px; border-bottom: 1px solid rgba(214,228,236,0.3); border-left: 1px solid rgba(214,228,236,0.3); }
+  .frame.br { bottom: 14px; right: 14px; width: 22px; height: 22px; border-bottom: 1px solid rgba(214,228,236,0.3); border-right: 1px solid rgba(214,228,236,0.3); }
+</style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="frame tl"></div><div class="frame tr"></div>
+  <div class="frame bl"></div><div class="frame br"></div>
+
+  <div class="brand">
+    <div class="brand-mark">KLINEKRAFT</div>
+    <div class="brand-tag">OCEAN // SHADER STUDY</div>
+  </div>
+
+  <div class="hud hud-bl">
+    <div class="legend">
+      <b>DRAG</b>orbit<br>
+      <b>SHIFT+DRAG</b>move shape<br>
+      <b>CLICK SHAPE</b>splash<br>
+      <b>H</b>toggle panel
+    </div>
+  </div>
+  <div class="hud hud-br">
+    <span class="stat"><span id="fps">--</span> FPS</span>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="panel-header">
+      <span class="panel-title">CONTROLS</span>
+      <div class="panel-actions">
+        <button class="panel-randomize" id="rand-btn">RANDOM</button>
+        <button class="panel-toggle" id="hide-btn">HIDE</button>
+      </div>
+    </div>
+    <div id="sliders"></div>
+  </div>
+  <button class="show-button" id="show-btn">SHOW CONTROLS</button>
+
+  <img class="footer-logo" src="assets/klinekraft_logo_white.png" alt="KLINEKRAFT" onerror="this.style.display='none'" />
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Water } from 'three/addons/objects/Water.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+
+// =============================================================
+// OCEAN // KLINEKRAFT
+// three.js Water + Sky, Gerstner swell underlay, foam,
+// floating draggable shapes & 3D text, splash particles.
+// =============================================================
+
+// ---------- BOOT ----------
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.5;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 20000);
+camera.position.set(40, 30, 100);
+
+const controls = new OrbitControls(camera, canvas);
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.target.set(0, 8, 0);
+controls.minDistance = 30;
+controls.maxDistance = 800;
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+
+// ---------- SUN ----------
+const sun = new THREE.Vector3();
+
+// ---------- WATER ----------
+const waterGeometry = new THREE.PlaneGeometry(10000, 10000, 200, 200);
+
+const waterNormals = new THREE.TextureLoader().load(
+  'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',
+  (tex) => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; }
+);
+
+const water = new Water(waterGeometry, {
+  textureWidth: 512,
+  textureHeight: 512,
+  waterNormals,
+  sunDirection: new THREE.Vector3(),
+  sunColor: 0xffffff,
+  waterColor: 0x001e0f,
+  distortionScale: 3.7,
+  fog: scene.fog !== undefined,
+});
+water.rotation.x = -Math.PI / 2;
+scene.add(water);
+
+// ---------- GERSTNER SWELL UNDERLAY ----------
+// We layer real vertex displacement on the water plane to give it rolling
+// swells. Three.js Water reads geometry positions for reflection so this
+// stays consistent. We update positions per frame using a Gerstner sum.
+const swellState = {
+  amplitude: 1.6,    // swell height (world units)
+  wavelengths: [60, 96, 140],   // mixed wavelengths
+  directions: [
+    new THREE.Vector2(1.0, 0.4).normalize(),
+    new THREE.Vector2(-0.7, 0.9).normalize(),
+    new THREE.Vector2(0.3, -1.0).normalize(),
+  ],
+  speeds: [1.0, 0.65, 0.5],
+  steepness: [0.5, 0.4, 0.3],
+};
+const baseWaterPositions = waterGeometry.attributes.position.array.slice();
+
+function gerstnerSamplePoint(x, z, t, out) {
+  // Returns final displaced (x', y', z') in `out` and writes a normal too.
+  let dx = 0, dy = 0, dz = 0;
+  let nx = 0, nz = 0;
+  for (let i = 0; i < swellState.wavelengths.length; i++) {
+    const L = swellState.wavelengths[i];
+    const k = (Math.PI * 2) / L;
+    const dir = swellState.directions[i];
+    const c = Math.sqrt(9.81 / k); // wave speed
+    const phase = k * (dir.x * x + dir.y * z) - c * t * swellState.speeds[i];
+    const Q = swellState.steepness[i];
+    const a = swellState.amplitude * (i === 0 ? 1.0 : 0.6);
+    const cosP = Math.cos(phase);
+    const sinP = Math.sin(phase);
+    dx += Q * a * dir.x * cosP;
+    dz += Q * a * dir.y * cosP;
+    dy += a * sinP;
+    nx += -dir.x * k * a * cosP;
+    nz += -dir.y * k * a * cosP;
+  }
+  out.x = x + dx;
+  out.y = dy;
+  out.z = z + dz;
+  out.nx = nx;
+  out.nz = nz;
+}
+
+const _gs = { x:0, y:0, z:0, nx:0, nz:0 };
+function gerstnerHeightAt(x, z, t) {
+  // returns y at world (x, z); used for object placement.
+  // Gerstner is iterative if you want exact, but one pass is fine.
+  gerstnerSamplePoint(x, z, t, _gs);
+  return _gs.y;
+}
+function gerstnerNormalAt(x, z, t) {
+  gerstnerSamplePoint(x, z, t, _gs);
+  // Reconstruct normal from gradient.
+  return new THREE.Vector3(-_gs.nx, 1.0, -_gs.nz).normalize();
+}
+
+function updateWaterGeometry(t) {
+  // The water plane is built in local XY then rotated -π/2 about X, so local Z
+  // becomes world Y (height). We sample Gerstner with local (x, y) treated as
+  // world (x, z) and write the resulting height into local Z.
+  const arr = waterGeometry.attributes.position.array;
+  for (let i = 0; i < arr.length; i += 3) {
+    const ox = baseWaterPositions[i];
+    const oy = baseWaterPositions[i + 1];
+    gerstnerSamplePoint(ox, oy, t, _gs);
+    arr[i]     = _gs.x;   // small horizontal sway
+    arr[i + 1] = _gs.z;
+    arr[i + 2] = _gs.y;   // height (becomes world Y after rotation)
+  }
+  waterGeometry.attributes.position.needsUpdate = true;
+  waterGeometry.computeVertexNormals();
+}
+
+// ---------- SKY ----------
+const sky = new Sky();
+sky.scale.setScalar(10000);
+scene.add(sky);
+const skyU = sky.material.uniforms;
+skyU['turbidity'].value = 10;
+skyU['rayleigh'].value = 2;
+skyU['mieCoefficient'].value = 0.005;
+skyU['mieDirectionalG'].value = 0.8;
+
+// ---------- LIGHTS ----------
+const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+scene.add(dirLight);
+
+// ---------- ENV REFLECTION ----------
+// Generate an environment map from the sky each frame (cheap variant) so chrome
+// shapes can reflect the actual sky. We use a PMREMGenerator on a
+// CubeRenderTarget rendering the sky.
+const pmrem = new THREE.PMREMGenerator(renderer);
+let envRT = null;
+function refreshEnvMap() {
+  // Render sky into a render target and run PMREM
+  const tempScene = new THREE.Scene();
+  const skyClone = sky.clone();
+  tempScene.add(skyClone);
+  if (envRT) envRT.dispose();
+  envRT = pmrem.fromScene(tempScene, 0.04);
+  scene.environment = envRT.texture;
+}
+
+// ---------- PARAMS ----------
+const params = {
+  // Object
+  shape: 'none',           // none | cube | sphere | cylinder | torus | pyramid | island | text
+  text: 'KLINEKRAFT',
+  shapeSize: 1.0,
+  material: 'matte',       // matte | chrome
+  shapeColor: '#e8edf2',
+
+  // Waves (water shader normal map + swell)
+  waveSize: 1.0,
+  waveSpeed: 1.0,
+  choppiness: 1.0,
+  windDir: 30,             // degrees
+  swellHeight: 1.0,
+  foamIntensity: 0.7,
+
+  // Sky / Sun
+  sunElevation: 8,
+  sunAzimuth: 180,
+  turbidity: 10,
+
+  // Look
+  glitter: 0.5,
+  waterColor: '#001e0f',
+  fogDensity: 0.0008,
+};
+
+scene.fog = new THREE.FogExp2(0xb6c8d8, params.fogDensity);
+
+function applyParams() {
+  // Sun
+  const phi = THREE.MathUtils.degToRad(90 - params.sunElevation);
+  const theta = THREE.MathUtils.degToRad(params.sunAzimuth);
+  sun.setFromSphericalCoords(1, phi, theta);
+  skyU['sunPosition'].value.copy(sun);
+  skyU['turbidity'].value = params.turbidity;
+  skyU['rayleigh'].value = THREE.MathUtils.lerp(0.5, 4.0, Math.max(0, params.sunElevation) / 90);
+
+  water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+  water.material.uniforms['distortionScale'].value = params.waveSize * params.choppiness * 3.7;
+  water.material.uniforms['waterColor'].value.set(params.waterColor);
+
+  // Sun color shifts warm near horizon
+  const redness = THREE.MathUtils.smoothstep(params.sunElevation, -2, 12);
+  const sunCol = new THREE.Color().setHSL(
+    THREE.MathUtils.lerp(0.05, 0.13, redness),
+    THREE.MathUtils.lerp(1.0, 0.3, redness),
+    THREE.MathUtils.lerp(0.45, 0.85, redness)
+  );
+  water.material.uniforms['sunColor'].value.copy(sunCol);
+
+  // Tone exposure (proxy for glitter strength)
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(0.25, 0.95, params.glitter);
+
+  // Wind direction rotates the normal map by setting its rotation property
+  if (waterNormals && waterNormals.center) {
+    waterNormals.center.set(0.5, 0.5);
+    waterNormals.rotation = THREE.MathUtils.degToRad(params.windDir);
+    waterNormals.needsUpdate = true;
+  }
+
+  // Swell amplitude (world units)
+  swellState.amplitude = 1.6 * params.swellHeight;
+
+  // Fog
+  scene.fog.density = params.fogDensity;
+
+  // Directional light follows sun
+  dirLight.position.copy(sun).multiplyScalar(100);
+  dirLight.color.copy(sunCol);
+
+  // Refresh env map for chrome reflections (only when shape is chrome to save perf)
+  if (params.material === 'chrome') refreshEnvMap();
+
+  // Update shape style
+  if (currentShape) applyShapeStyle();
+}
+
+// ---------- SHAPE SYSTEM ----------
+let currentShape = null;
+let foamRing = null;
+let wakeTrail = null;
+const splashEmitters = [];
+let helvetikerFont = null;
+const fontLoader = new FontLoader();
+const FONT_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/fonts/helvetiker_bold.typeface.json';
+fontLoader.load(FONT_URL, (f) => { helvetikerFont = f; if (params.shape === 'text') buildShape(); });
+
+function buildShape() {
+  // Remove old shape and its accessories
+  if (currentShape) { scene.remove(currentShape); currentShape.geometry?.dispose?.(); }
+  if (foamRing) { scene.remove(foamRing); foamRing.geometry.dispose(); }
+  currentShape = null;
+  foamRing = null;
+
+  if (params.shape === 'none') return;
+
+  // Build geometry
+  let geom;
+  const s = 14 * params.shapeSize;
+  switch (params.shape) {
+    case 'cube':
+      geom = new THREE.BoxGeometry(s, s, s);
+      break;
+    case 'sphere':
+      geom = new THREE.SphereGeometry(s * 0.6, 64, 48);
+      break;
+    case 'cylinder':
+      geom = new THREE.CylinderGeometry(s * 0.55, s * 0.55, s, 48);
+      break;
+    case 'torus':
+      geom = new THREE.TorusGeometry(s * 0.55, s * 0.18, 24, 64);
+      break;
+    case 'pyramid':
+      geom = new THREE.ConeGeometry(s * 0.7, s, 4);
+      break;
+    case 'island':
+      geom = makeIslandGeometry(s);
+      break;
+    case 'text':
+      if (!helvetikerFont) {
+        // Pending; will rebuild when font loads
+        return;
+      }
+      geom = new TextGeometry((params.text || 'KLINEKRAFT').toUpperCase().slice(0, 20), {
+        font: helvetikerFont,
+        size: s * 0.6,
+        height: s * 0.25,
+        curveSegments: 6,
+        bevelEnabled: true,
+        bevelThickness: s * 0.02,
+        bevelSize: s * 0.015,
+        bevelSegments: 3,
+      });
+      geom.center();
+      break;
+  }
+
+  const mat = makeShapeMaterial();
+  currentShape = new THREE.Mesh(geom, mat);
+  currentShape.castShadow = false;
+  currentShape.receiveShadow = false;
+  currentShape.userData.isShape = true;
+
+  // Initial position
+  if (!shapePosition) shapePosition = new THREE.Vector2(0, 0);
+  scene.add(currentShape);
+
+  // Foam ring (a flat disc-ish ring sitting just above water at object base)
+  buildFoamRing();
+}
+
+function makeIslandGeometry(scale) {
+  // A low-poly bumpy disc with a peak
+  const radius = scale * 0.85;
+  const height = scale * 0.55;
+  const segs = 8, rings = 5;
+  const geo = new THREE.ConeGeometry(radius, height, segs, rings);
+  // Distort vertices to make it look craggy
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const r = Math.sqrt(x*x + z*z);
+    const noise = Math.sin(x*0.3) * Math.cos(z*0.3) * 0.18;
+    const yJitter = (Math.random() - 0.5) * 0.2 * height;
+    pos.setX(i, x * (1 + noise));
+    pos.setZ(i, z * (1 + noise));
+    pos.setY(i, y + yJitter);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeShapeMaterial() {
+  if (params.material === 'chrome') {
+    return new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      metalness: 1.0,
+      roughness: 0.08,
+      envMapIntensity: 1.0,
+    });
+  }
+  // Matte
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(params.shapeColor),
+    metalness: 0.0,
+    roughness: 0.55,
+  });
+}
+
+function applyShapeStyle() {
+  if (!currentShape) return;
+  currentShape.material.dispose();
+  currentShape.material = makeShapeMaterial();
+}
+
+function buildFoamRing() {
+  if (!currentShape) return;
+  // Use bounding box to determine ring radius
+  const bbox = new THREE.Box3().setFromObject(currentShape);
+  const size = new THREE.Vector3(); bbox.getSize(size);
+  const radius = Math.max(size.x, size.z) * 0.55;
+
+  const ringGeo = new THREE.RingGeometry(radius * 0.95, radius * 1.7, 64);
+  const ringMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uIntensity: { value: params.foamIntensity },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform float uTime;
+      uniform float uIntensity;
+      varying vec2 vUv;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+                   mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+      }
+      void main() {
+        // vUv.y goes 0 (inner) to 1 (outer) on a ring
+        float r = vUv.y;
+        // Animated speckle pattern
+        float speckle = noise(vec2(vUv.x * 60.0, r * 14.0 + uTime * 1.5));
+        speckle += noise(vec2(vUv.x * 120.0 + uTime * 0.8, r * 30.0)) * 0.5;
+        float fade = (1.0 - r) * smoothstep(0.0, 0.3, r);
+        float a = smoothstep(0.55, 0.85, speckle) * fade * uIntensity;
+        gl_FragColor = vec4(vec3(1.0), a);
+      }
+    `,
+  });
+  foamRing = new THREE.Mesh(ringGeo, ringMat);
+  foamRing.rotation.x = -Math.PI / 2;
+  scene.add(foamRing);
+}
+
+// ---------- SPLASH PARTICLES ----------
+class Splash {
+  constructor(x, z, count = 30, scale = 1.0) {
+    this.alive = true;
+    this.life = 0;
+    this.maxLife = 1.4;
+    this.scale = scale;
+
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      // Spawn near (x, 0, z) with outward radial velocity
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 8 + Math.random() * 14;
+      const upward = 12 + Math.random() * 18;
+      positions[i*3]     = x;
+      positions[i*3 + 1] = 0;
+      positions[i*3 + 2] = z;
+      velocities[i*3]     = Math.cos(angle) * speed * scale;
+      velocities[i*3 + 1] = upward * scale;
+      velocities[i*3 + 2] = Math.sin(angle) * speed * scale;
+      sizes[i] = 1.5 + Math.random() * 2.5;
+    }
+    this.velocities = velocities;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uAlpha: { value: 1.0 }, uPxScale: { value: window.innerHeight * 0.5 } },
+      vertexShader: `
+        attribute float size;
+        uniform float uPxScale;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = size * uPxScale / -mv.z;
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        uniform float uAlpha;
+        void main() {
+          vec2 c = gl_PointCoord - vec2(0.5);
+          float d = length(c);
+          float a = smoothstep(0.5, 0.1, d) * uAlpha;
+          gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+        }
+      `,
+    });
+    this.points = new THREE.Points(geom, mat);
+    this.points.frustumCulled = false;
+    scene.add(this.points);
+  }
+  update(dt) {
+    this.life += dt;
+    if (this.life >= this.maxLife) {
+      this.alive = false;
+      return;
+    }
+    const pos = this.points.geometry.attributes.position.array;
+    for (let i = 0; i < this.velocities.length; i += 3) {
+      pos[i]     += this.velocities[i] * dt;
+      pos[i + 1] += this.velocities[i + 1] * dt;
+      pos[i + 2] += this.velocities[i + 2] * dt;
+      this.velocities[i + 1] -= 32 * dt; // gravity
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    this.points.material.uniforms.uAlpha.value = 1.0 - (this.life / this.maxLife);
+  }
+  dispose() {
+    scene.remove(this.points);
+    this.points.geometry.dispose();
+    this.points.material.dispose();
+  }
+}
+
+function spawnSplash(x, z, count = 30, scale = 1.0) {
+  splashEmitters.push(new Splash(x, z, count, scale));
+}
+
+// ---------- WAKE TRAIL ----------
+const WAKE_LEN = 60;
+const wakePositions = new Float32Array(WAKE_LEN * 3);
+const wakeAlphas = new Float32Array(WAKE_LEN);
+{
+  const wakeGeom = new THREE.BufferGeometry();
+  wakeGeom.setAttribute('position', new THREE.BufferAttribute(wakePositions, 3));
+  wakeGeom.setAttribute('alpha', new THREE.BufferAttribute(wakeAlphas, 1));
+  const wakeMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uPxScale: { value: window.innerHeight * 0.5 } },
+    vertexShader: `
+      attribute float alpha;
+      varying float vAlpha;
+      uniform float uPxScale;
+      void main() {
+        vAlpha = alpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = 8.0 * uPxScale / -mv.z;
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      varying float vAlpha;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        float a = smoothstep(0.5, 0.1, d) * vAlpha;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, a * 0.7);
+      }
+    `,
+  });
+  wakeTrail = new THREE.Points(wakeGeom, wakeMat);
+  wakeTrail.frustumCulled = false;
+  scene.add(wakeTrail);
+}
+
+let wakeWriteIdx = 0;
+let lastShapePos = new THREE.Vector2(0, 0);
+function pushWakePoint(x, z) {
+  wakePositions[wakeWriteIdx * 3]     = x;
+  wakePositions[wakeWriteIdx * 3 + 1] = 0.5;
+  wakePositions[wakeWriteIdx * 3 + 2] = z;
+  wakeAlphas[wakeWriteIdx] = 1.0;
+  wakeWriteIdx = (wakeWriteIdx + 1) % WAKE_LEN;
+  wakeTrail.geometry.attributes.position.needsUpdate = true;
+  wakeTrail.geometry.attributes.alpha.needsUpdate = true;
+}
+function updateWakeFade(dt) {
+  for (let i = 0; i < WAKE_LEN; i++) {
+    wakeAlphas[i] = Math.max(0, wakeAlphas[i] - dt * 0.6);
+  }
+  wakeTrail.geometry.attributes.alpha.needsUpdate = true;
+}
+
+// ---------- SHAPE POSITION ----------
+let shapePosition = new THREE.Vector2(0, 0); // in world XZ
+let lastCrestHeight = 0;
+let crestSplashCooldown = 0;
+
+function updateShapeOnWaves(dt, t) {
+  if (!currentShape) return;
+
+  // Sample wave height + normal at shape's XZ
+  const x = shapePosition.x, z = shapePosition.y;
+  gerstnerSamplePoint(x, z, t, _gs);
+  const surfaceY = _gs.y;
+  const normal = new THREE.Vector3(-_gs.nx, 1.0, -_gs.nz).normalize();
+
+  // Position the shape resting on water (with a small offset for visual contact)
+  // Bounding box bottom should sit at waterline.
+  const bbox = new THREE.Box3().setFromObject(currentShape);
+  const minY = bbox.min.y - currentShape.position.y;
+  const restY = surfaceY - minY * 0.5;
+  currentShape.position.set(x, restY, z);
+
+  // Tilt to wave normal — interpolate to avoid jitter
+  const targetQuat = new THREE.Quaternion();
+  targetQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+  currentShape.quaternion.slerp(targetQuat, 0.12);
+
+  // Foam ring follows shape
+  if (foamRing) {
+    foamRing.position.set(x, surfaceY + 0.05, z);
+    foamRing.material.uniforms.uTime.value = t;
+    foamRing.material.uniforms.uIntensity.value = params.foamIntensity;
+  }
+
+  // Auto-splash on wave crest pass-through
+  crestSplashCooldown -= dt;
+  if (surfaceY > lastCrestHeight && surfaceY > swellState.amplitude * 0.55 && crestSplashCooldown <= 0) {
+    spawnSplash(x, z, 12 + Math.floor(params.foamIntensity * 14), 0.6 + params.foamIntensity * 0.4);
+    crestSplashCooldown = 0.45;
+  }
+  lastCrestHeight = surfaceY;
+
+  // Wake trail when dragging
+  if (isDraggingShape) {
+    const moved = lastShapePos.distanceTo(shapePosition);
+    if (moved > 1.5) {
+      pushWakePoint(x, z);
+      lastShapePos.copy(shapePosition);
+    }
+  }
+}
+
+// ---------- INTERACTION ----------
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+let isDraggingShape = false;
+
+function pointerToWaterXZ(e) {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(waterPlane, hit)) return new THREE.Vector2(hit.x, hit.z);
+  return null;
+}
+
+function intersectShape(e) {
+  if (!currentShape) return false;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObject(currentShape, false);
+  return hits.length > 0;
+}
+
+let pointerDownPos = null;
+let pointerDownOnShape = false;
+
+canvas.addEventListener('pointerdown', (e) => {
+  pointerDownPos = { x: e.clientX, y: e.clientY };
+  pointerDownOnShape = false;
+
+  // Shift+drag = move shape
+  if (e.shiftKey && currentShape) {
+    isDraggingShape = true;
+    controls.enabled = false;
+    document.body.classList.add('draggingShape');
+    const p = pointerToWaterXZ(e);
+    if (p) shapePosition.copy(p);
+    return;
+  }
+
+  // Track if the click started on the shape (for click-to-splash on release)
+  if (currentShape && intersectShape(e)) {
+    pointerDownOnShape = true;
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (isDraggingShape) {
+    const p = pointerToWaterXZ(e);
+    if (p) shapePosition.copy(p);
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  if (isDraggingShape) {
+    isDraggingShape = false;
+    controls.enabled = true;
+    document.body.classList.remove('draggingShape');
+    spawnSplash(shapePosition.x, shapePosition.y, 35, 1.0);
+  } else if (pointerDownOnShape && pointerDownPos) {
+    // Only splash if pointer didn't move much (genuine click, not orbit drag)
+    const dx = e.clientX - pointerDownPos.x;
+    const dy = e.clientY - pointerDownPos.y;
+    if (Math.hypot(dx, dy) < 6) {
+      spawnSplash(shapePosition.x, shapePosition.y, 50, 1.5);
+    }
+  }
+  pointerDownOnShape = false;
+  pointerDownPos = null;
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.key === 'h' || e.key === 'H') setPanel(panel.classList.contains('hidden'));
+  if (e.key === 'r' || e.key === 'R') randomizePreset();
+});
+
+// ---------- BUILD UI ----------
+const slidersEl = document.getElementById('sliders');
+
+function addSection(label) {
+  const el = document.createElement('div');
+  el.className = 'section-label';
+  el.textContent = label;
+  slidersEl.appendChild(el);
+}
+
+function addSlider(key, label, min, max, step, format = (v) => v.toFixed(2), onChange = null) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'row-label';
+  const nameEl = document.createElement('span');
+  nameEl.textContent = label;
+  const valEl = document.createElement('span');
+  valEl.textContent = format(params[key]);
+  labelEl.append(nameEl, valEl);
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = min; input.max = max; input.step = step;
+  input.value = params[key];
+  input.addEventListener('input', () => {
+    params[key] = parseFloat(input.value);
+    valEl.textContent = format(params[key]);
+    if (onChange) onChange();
+    applyParams();
+  });
+  row.append(labelEl, input);
+  slidersEl.appendChild(row);
+  return { input, refresh: () => { input.value = params[key]; valEl.textContent = format(params[key]); } };
+}
+
+function addColor(key, label) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'row-label';
+  const nameEl = document.createElement('span');
+  nameEl.textContent = label;
+  const valEl = document.createElement('span');
+  valEl.textContent = params[key].toUpperCase();
+  labelEl.append(nameEl, valEl);
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = params[key];
+  input.addEventListener('input', () => {
+    params[key] = input.value;
+    valEl.textContent = input.value.toUpperCase();
+    applyParams();
+  });
+  row.append(labelEl, input);
+  slidersEl.appendChild(row);
+  return { input, refresh: () => { input.value = params[key]; valEl.textContent = params[key].toUpperCase(); } };
+}
+
+function addSelect(key, label, options, onChange = null) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'row-label';
+  labelEl.innerHTML = `<span>${label}</span><span></span>`;
+  row.appendChild(labelEl);
+  const select = document.createElement('select');
+  for (const opt of options) {
+    const o = document.createElement('option');
+    o.value = opt; o.textContent = opt;
+    if (opt === params[key]) o.selected = true;
+    select.appendChild(o);
+  }
+  select.addEventListener('change', () => {
+    params[key] = select.value;
+    if (onChange) onChange();
+    applyParams();
+  });
+  row.appendChild(select);
+  slidersEl.appendChild(row);
+  return { select };
+}
+
+function addToggle(key, label, options, onChange = null) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'row-label';
+  labelEl.innerHTML = `<span>${label}</span><span></span>`;
+  row.appendChild(labelEl);
+  const group = document.createElement('div');
+  group.className = 'toggle-group';
+  const buttons = [];
+  for (const opt of options) {
+    const b = document.createElement('button');
+    b.textContent = opt;
+    if (opt === params[key]) b.classList.add('active');
+    b.addEventListener('click', () => {
+      params[key] = opt;
+      buttons.forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (onChange) onChange();
+      applyParams();
+    });
+    buttons.push(b);
+    group.appendChild(b);
+  }
+  row.appendChild(group);
+  slidersEl.appendChild(row);
+}
+
+function addText(key, label) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'row-label';
+  labelEl.innerHTML = `<span>${label}</span><span></span>`;
+  row.appendChild(labelEl);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = params[key];
+  input.maxLength = 20;
+  input.addEventListener('input', () => {
+    params[key] = input.value;
+    if (params.shape === 'text') buildShape();
+  });
+  row.appendChild(input);
+  slidersEl.appendChild(row);
+  return row;
+}
+
+// ----- Sections -----
+const textRowRef = { row: null };
+
+function buildPanelContent() {
+  slidersEl.innerHTML = '';
+
+  addSection('OBJECT');
+  addSelect('shape', 'Shape', ['none','cube','sphere','cylinder','torus','pyramid','island','text'], () => {
+    buildShape();
+    if (textRowRef.row) textRowRef.row.style.display = (params.shape === 'text') ? '' : 'none';
+  });
+  textRowRef.row = addText('text', 'Message');
+  textRowRef.row.style.display = (params.shape === 'text') ? '' : 'none';
+  addSlider('shapeSize', 'Size', 0.3, 3.0, 0.05, (v) => v.toFixed(2) + 'x', () => buildShape());
+  addToggle('material', 'Material', ['matte','chrome'], () => buildShape());
+  addColor('shapeColor', 'Shape color');
+
+  addSection('WAVES');
+  addSlider('waveSize', 'Wave size', 0.1, 3.0, 0.01, (v) => v.toFixed(2) + 'x');
+  addSlider('waveSpeed', 'Wave speed', 0.0, 3.0, 0.01, (v) => v.toFixed(2) + 'x');
+  addSlider('choppiness', 'Choppiness', 0.0, 2.5, 0.01, (v) => v.toFixed(2));
+  addSlider('windDir', 'Wind direction', 0, 360, 1, (v) => Math.round(v) + '°');
+  addSlider('swellHeight', 'Swell height', 0.0, 2.5, 0.01, (v) => v.toFixed(2) + 'x');
+  addSlider('foamIntensity', 'Foam', 0, 1.5, 0.01, (v) => v.toFixed(2));
+
+  addSection('SKY');
+  addSlider('sunElevation', 'Sun elevation', -2, 90, 0.1, (v) => v.toFixed(1) + '°');
+  addSlider('sunAzimuth', 'Sun azimuth', 0, 360, 1, (v) => Math.round(v) + '°');
+  addSlider('turbidity', 'Atmosphere', 1, 20, 0.1);
+
+  addSection('LOOK');
+  addSlider('glitter', 'Glitter', 0, 1, 0.01);
+  addColor('waterColor', 'Water color');
+  addSlider('fogDensity', 'Fog', 0, 0.003, 0.0001, (v) => v.toFixed(4));
+}
+buildPanelContent();
+
+// ----- Panel toggling -----
+const panel = document.getElementById('panel');
+const hideBtn = document.getElementById('hide-btn');
+const showBtn = document.getElementById('show-btn');
+const randBtn = document.getElementById('rand-btn');
+function setPanel(visible) {
+  panel.classList.toggle('hidden', !visible);
+  showBtn.classList.toggle('visible', !visible);
+}
+hideBtn.addEventListener('click', () => setPanel(false));
+showBtn.addEventListener('click', () => setPanel(true));
+randBtn.addEventListener('click', randomizePreset);
+
+// ----- Randomize -----
+const presetMoods = [
+  { // Tropical noon
+    sunElevation: 45, sunAzimuth: 200, turbidity: 6,
+    waveSize: 0.7, waveSpeed: 1.0, choppiness: 0.8, windDir: 60,
+    swellHeight: 0.6, foamIntensity: 0.4, glitter: 0.55,
+    waterColor: '#0e7592', fogDensity: 0.0004,
+  },
+  { // Sunset
+    sunElevation: 4, sunAzimuth: 280, turbidity: 14,
+    waveSize: 1.0, waveSpeed: 0.8, choppiness: 1.0, windDir: 200,
+    swellHeight: 1.0, foamIntensity: 0.6, glitter: 0.45,
+    waterColor: '#1a3942', fogDensity: 0.0008,
+  },
+  { // Storm
+    sunElevation: 6, sunAzimuth: 90, turbidity: 18,
+    waveSize: 2.2, waveSpeed: 1.6, choppiness: 1.8, windDir: 100,
+    swellHeight: 2.0, foamIntensity: 1.2, glitter: 0.55,
+    waterColor: '#0a1418', fogDensity: 0.0014,
+  },
+  { // Moonlit
+    sunElevation: -1.5, sunAzimuth: 30, turbidity: 4,
+    waveSize: 0.6, waveSpeed: 0.7, choppiness: 0.7, windDir: 30,
+    swellHeight: 0.5, foamIntensity: 0.45, glitter: 0.65,
+    waterColor: '#04101a', fogDensity: 0.0010,
+  },
+  { // Crystal calm
+    sunElevation: 30, sunAzimuth: 160, turbidity: 3,
+    waveSize: 0.35, waveSpeed: 0.5, choppiness: 0.4, windDir: 0,
+    swellHeight: 0.25, foamIntensity: 0.2, glitter: 0.5,
+    waterColor: '#15a6b8', fogDensity: 0.0003,
+  },
+  { // Foggy dawn
+    sunElevation: 3, sunAzimuth: 95, turbidity: 12,
+    waveSize: 0.85, waveSpeed: 0.9, choppiness: 0.9, windDir: 110,
+    swellHeight: 0.8, foamIntensity: 0.5, glitter: 0.4,
+    waterColor: '#22404c', fogDensity: 0.0022,
+  },
+];
+
+function randomizePreset() {
+  const mood = presetMoods[Math.floor(Math.random() * presetMoods.length)];
+  Object.assign(params, mood);
+  rebuildPanelValues();
+  applyParams();
+}
+
+function rebuildPanelValues() {
+  buildPanelContent();
+}
+
+// ---------- INIT ----------
+applyParams();
+buildShape();
+
+// ---------- RESIZE ----------
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ---------- MAIN LOOP ----------
+const clock = new THREE.Clock();
+let frames = 0, lastFpsTime = performance.now();
+const fpsEl = document.getElementById('fps');
+let timeAcc = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  timeAcc += dt * params.waveSpeed;
+
+  // Three.js Water uses its own time uniform for normal map scrolling.
+  water.material.uniforms['time'].value += dt * params.waveSpeed;
+
+  // Update the Gerstner-displaced water geometry.
+  updateWaterGeometry(timeAcc);
+
+  // Update shape on the waves.
+  updateShapeOnWaves(dt, timeAcc);
+
+  // Splashes
+  for (let i = splashEmitters.length - 1; i >= 0; i--) {
+    splashEmitters[i].update(dt);
+    if (!splashEmitters[i].alive) {
+      splashEmitters[i].dispose();
+      splashEmitters.splice(i, 1);
+    }
+  }
+
+  // Wake fade
+  updateWakeFade(dt);
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  frames++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 500) {
+    fpsEl.textContent = Math.round((frames * 1000) / (now - lastFpsTime));
+    frames = 0; lastFpsTime = now;
+  }
+}
+animate();
+</script>
+</body>
+</html>
